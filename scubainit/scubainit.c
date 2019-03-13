@@ -4,6 +4,7 @@
 #include <stdbool.h>
 #include <assert.h>
 #include <string.h>
+#include <fcntl.h>
 #include <unistd.h>
 #include <errno.h>
 #include <limits.h>
@@ -279,6 +280,9 @@ out:
 static int
 change_user(void)
 {
+    if (!use_scuba_user())
+        return 0;
+
     /* TODO: Would we ever want to get this list from scuba, too? */
     if (setgroups(0, NULL) != 0) {
         errmsg("Failed to setgroups(): %m\n");
@@ -554,6 +558,40 @@ process_envvars(void)
     return 0;
 }
 
+
+static void
+prepare_scuba_user(void)
+{
+    if (!use_scuba_user())
+        return;
+
+    /* Create scuba user home directory */
+    if (make_homedir(SCUBA_HOME, m_uid, m_gid) != 0)
+        exit(99);
+
+    /* Add scuba user and group */
+    if (add_group(ETC_GROUP, SCUBA_GROUP, m_gid) != 0)
+        exit(99);
+    if (add_user(ETC_PASSWD, SCUBA_USER, m_uid, m_gid,
+                SCUBA_USER_FULLNAME, SCUBA_HOME) != 0)
+        exit(99);
+    if (add_shadow(ETC_SHADOW, SCUBA_USER) != 0)
+        exit(99);
+
+    /**
+     * Change ownership of /dev/std*
+     * See issue #126
+     */
+    for (int fd = 0; fd <= 2; fd++) {
+        if (!isatty(fd))
+            continue;
+        if (fchown(fd, m_uid, m_gid) != 0) {
+            errmsg("Failed to fchown(%d, %d, %d): %m\n", fd, m_uid, m_gid);
+            exit(99);
+        }
+    }
+}
+
 int
 main(int argc, char **argv)
 {
@@ -572,29 +610,14 @@ main(int argc, char **argv)
     if (process_envvars() < 0)
         exit(99);
 
-    if (use_scuba_user()) {
-        /* Create scuba user home directory */
-        if (make_homedir(SCUBA_HOME, m_uid, m_gid) != 0)
-            exit(99);
-
-        /* Add scuba user and group */
-        if (add_group(ETC_GROUP, SCUBA_GROUP, m_gid) != 0)
-            exit(99);
-        if (add_user(ETC_PASSWD, SCUBA_USER, m_uid, m_gid,
-                    SCUBA_USER_FULLNAME, SCUBA_HOME) != 0)
-            exit(99);
-        if (add_shadow(ETC_SHADOW, SCUBA_USER) != 0)
-            exit(99);
-    }
+    prepare_scuba_user();
 
     /* Call pre-su hook */
     call_hook(m_root_hook);
 
     /* Handle the scuba user */
-    if (use_scuba_user()) {
-        if (change_user() < 0)
-            exit(99);
-    }
+    if (change_user() < 0)
+        exit(99);
 
     if (m_umask >= 0) {
         verbose("Setting umask to 0%o\n", m_umask);
