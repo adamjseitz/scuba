@@ -54,6 +54,9 @@ class ScubaDive:
                                   shell = shell_override,
                                   )
 
+        # Apply environment vars from .scuba.yml
+        self.env_vars.update(self.context.environment)
+
 
 
     def prepare(self):
@@ -75,8 +78,6 @@ class ScubaDive:
         # Docker is running natively
         self.__setup_native_run()
 
-        # Apply environment vars from .scuba.yml
-        self.env_vars.update(self.context.environment)
 
     def __enter__(self):
         return self
