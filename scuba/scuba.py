@@ -4,7 +4,6 @@ import sys
 import tempfile
 from collections.abc import Mapping
 from grp import getgrgid
-from io import StringIO
 from pwd import getpwuid
 
 from .config import find_config, ScubaConfig
@@ -12,7 +11,7 @@ from .config import ConfigError, ConfigNotFoundError
 from .dockerutil import get_image_command
 from .dockerutil import get_image_entrypoint
 from .dockerutil import make_vol_opt
-from .utils import shell_quote_cmd, flatten_list
+from .utils import shell_quote_cmd, flatten_list, StringIO
 
 
 def verbose_msg(fmt, *args):
@@ -88,26 +87,25 @@ class ScubaDive:
 
     def __str__(self):
         s = StringIO()
-        writeln(s, 'ScubaDive')
-        writeln(s, '   verbose:      {}'.format(self.verbose))
-        writeln(s, '   as_root:      {}'.format(self.as_root))
-        writeln(s, '   workdir:      {}'.format(self.workdir))
+        s.writeln('ScubaDive')
+        s.writeln('   verbose:      {}'.format(self.verbose))
+        s.writeln('   as_root:      {}'.format(self.as_root))
+        s.writeln('   workdir:      {}'.format(self.workdir))
 
-        writeln(s, '   options:')
+        s.writeln('   options:')
         for a in self.options:
-            writeln(s, '      ' + a)
+            s.writeln('      ' + a)
 
-        writeln(s, '   env_vars:')
+        s.writeln('   env_vars:')
         for k,v in self.env_vars.items():
-            writeln(s, '      {}={}'.format(k, v))
+            s.writeln('      {}={}'.format(k, v))
 
-        writeln(s, '   volumes:')
+        s.writeln('   volumes:')
         for hostpath, contpath, options in self.__get_vol_opts():
-            writeln(s, '      {} => {} {}'.format(hostpath, contpath, options))
+            s.writeln('      {} => {} {}'.format(hostpath, contpath, options))
 
-        writeln(s, '   context:')
-        writeln(s, '     script: ' + str(self.context.script)) 
-        writeln(s, '     image:  ' + str(self.context.image)) 
+        s.writeln('   context:')
+        s.writeln(str(self.context))
 
         return s.getvalue()
 
@@ -347,6 +345,17 @@ class ScubaContext:
         self.entrypoint = entrypoint
         self.environment = environment
         self.shell = shell
+
+    def __str__(self):
+        s = StringIO()
+        s.writeln('ScubaContext')
+        s.writeln('   image:        {}'.format(self.image))
+        s.writeln('   script:       {}'.format(self.script))
+        s.writeln('   as_root:      {}'.format(self.as_root))
+        s.writeln('   entrypoint:   {}'.format(self.entrypoint))
+        s.writeln('   environment:  {}'.format(self.environment))
+        s.writeln('   shell:        {}'.format(self.shell))
+        return s.getvalue()
 
     @classmethod
     def process_command(cls, cfg, command, image=None, shell=None):

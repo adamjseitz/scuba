@@ -1,4 +1,5 @@
 import errno
+import io
 import os
 from shlex import quote as shell_quote
 
@@ -68,3 +69,8 @@ def flatten_list(x):
         else:
             result.append(i)
     return result
+
+
+class StringIO(io.StringIO):
+    def writeln(self, line):
+        self.write(line + '\n')
