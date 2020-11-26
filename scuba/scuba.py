@@ -12,7 +12,7 @@ from .config import ConfigError, ConfigNotFoundError
 from .dockerutil import get_image_command
 from .dockerutil import get_image_entrypoint
 from .dockerutil import make_vol_opt
-from .utils import shell_quote_cmd
+from .utils import shell_quote_cmd, flatten_list
 
 
 def verbose_msg(fmt, *args):
@@ -183,8 +183,12 @@ class ScubaDive:
         self.vol_opts = ['z']
 
         # Process any aliases
-        context = self.config.process_command(self.user_command,
-                image=self.image_override, shell=self.shell_override)
+        context = ScubaContext.process_command(
+                                  cfg = self.config,
+                                  command = self.user_command,
+                                  image = self.image_override,
+                                  shell = self.shell_override,
+                                  )
 
         # Pass variables to scubainit
         self.add_env('SCUBAINIT_UMASK', '{:04o}'.format(get_umask()))
@@ -337,6 +341,82 @@ class ScubaDive:
         args += self.docker_cmd
 
         return args
+
+
+class ScubaContext:
+    @classmethod
+    def process_command(cls, cfg, command, image=None, shell=None):
+        '''Processes a user command using aliases
+
+        Arguments:
+            config      ScubaConfig object
+            command     A user command list (e.g. argv)
+            image       Override the image from .scuba.yml
+            shell       Override the shell from .scuba.yml
+
+        Returns: A ScubaContext object with the following attributes:
+            script: a list of command line strings
+            image: the docker image name to use
+        '''
+        result = cls()
+        result.script = None
+        result.image = None
+        result.entrypoint = cfg.entrypoint
+        result.environment = cfg.environment.copy()
+        result.shell = cfg.shell
+        result.as_root = False
+
+        if command:
+            alias = cfg.aliases.get(command[0])
+            if not alias:
+                # Command is not an alias; use it as-is.
+                result.script = [shell_quote_cmd(command)]
+            else:
+                # Using an alias
+                # Does this alias override the image and/or entrypoint?
+                if alias.image:
+                    result.image = alias.image
+                if alias.entrypoint is not None:
+                    result.entrypoint = alias.entrypoint
+                if alias.shell is not None:
+                    result.shell = alias.shell
+                if alias.as_root:
+                    result.as_root = True
+
+                # Merge/override the environment
+                if alias.environment:
+                    result.environment.update(alias.environment)
+
+                if len(alias.script) > 1:
+                    # Alias is a multiline script; no additional
+                    # arguments are allowed in the scuba invocation.
+                    if len(command) > 1:
+                        raise ConfigError('Additional arguments not allowed with multi-line aliases')
+                    result.script = alias.script
+
+                else:
+                    # Alias is a single-line script; perform substituion
+                    # and add user arguments.
+                    command.pop(0)
+                    result.script = [alias.script[0] + ' ' + shell_quote_cmd(command)]
+
+            result.script = flatten_list(result.script)
+
+        # If a shell was given on the CLI, it should override the shell set by
+        # the alias or top-level config
+        if shell:
+            result.shell = shell
+
+        # If an image was given, it overrides what might have been set by an alias
+        if image:
+            result.image = image
+
+        # If the image was still not set, then try to get it from the confg,
+        # which will raise a ConfigError if it is not set
+        if not result.image:
+            result.image = cfg.image
+
+        return result
 
 
 def writeln(f, line):
