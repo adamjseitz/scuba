@@ -340,6 +340,14 @@ class ScubaDive:
 
 
 class ScubaContext:
+    def __init__(self, image=None, script=None, entrypoint=None, environment=None, shell=None):
+        self.image = image
+        self.script = script
+        self.as_root = False
+        self.entrypoint = entrypoint
+        self.environment = environment
+        self.shell = shell
+
     @classmethod
     def process_command(cls, cfg, command, image=None, shell=None):
         '''Processes a user command using aliases
@@ -354,13 +362,11 @@ class ScubaContext:
             script: a list of command line strings
             image: the docker image name to use
         '''
-        result = cls()
-        result.script = None
-        result.image = None
-        result.entrypoint = cfg.entrypoint
-        result.environment = cfg.environment.copy()
-        result.shell = cfg.shell
-        result.as_root = False
+        result = cls(
+                entrypoint = cfg.entrypoint,
+                environment = cfg.environment.copy(),
+                shell = cfg.shell,
+                )
 
         if command:
             alias = cfg.aliases.get(command[0])
